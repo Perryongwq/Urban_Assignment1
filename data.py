@@ -1,5 +1,3 @@
-
-
 import os
 import numpy as np
 from collections import defaultdict
@@ -91,6 +89,7 @@ def read_data_file(txtpath, augmentation=True):
             txt_data[index][-1][uuid] = sum(rssis)/len(rssis)
 
     return txt_data 
+
 
 
 def split_floor_data(site, floor, testratio=0.1, augmentation=True): # (100 + rssi) / 100  ->  (0,1)
@@ -208,7 +207,5 @@ def split_floor_data(site, floor, testratio=0.1, augmentation=True): # (100 + rs
 
     return train_set, test_set, [bssid2index, uuid2index]
 
-
-# split_floor_data('site2', 'F4')
 
 

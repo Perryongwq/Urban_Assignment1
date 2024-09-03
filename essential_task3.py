@@ -1,186 +1,178 @@
-import json
 import os
-from pathlib import Path
-import plotly.graph_objs as go
-from PIL import Image
+import json
+import base64
 import numpy as np
-from utils.compute_f import split_ts_seq, compute_step_positions
+import pandas as pd
+import plotly.graph_objects as go
+from pathlib import Path
+from typing import Tuple
+from utils.compute_f import compute_step_positions
 
-def parse_file_ibeacon(path_data_files):
-    ibeacons = []
-    acceleration = []
-    positions = []
-    ahrs = []
+# Configuration constants
+RANDOM_SEED = 42
+DATA_DIR = os.path.join(os.getcwd(), 'data')
+OUTPUT_DIR = os.path.join(os.getcwd(), 'output')
+PATH_DATA_DIR = 'path_data_files'
+FLOOR_INFO_JSON_FILE = 'floor_info.json'
+FLOOR_IMAGE_FILE = 'floor_image.png'
+SAVE_IMG_DPI = 200
 
-    with open(path_data_files, 'r', encoding='utf-8') as file:
+# Function to read data file
+def read_data_file(data_filename: str, verbose: bool = False) -> Tuple[np.array, np.array, np.array, np.array]:
+    with open(data_filename, 'r', encoding='utf-8') as file:
         lines = file.readlines()
-        for line in lines:
-            line = line.strip()
-            if line[0] == "#" or not line:
-                continue
 
-            line = line.split("\t")
-            if line[1] == "TYPE_ACCELEROMETER":
-                acceleration.append([int(line[0]), float(line[2]), float(line[3]), float(line[4])])
-                continue
+    acce_data, magn_data, ahrs_data, wayp_data = [], [], [], []
 
-            if line[1] == "TYPE_BEACON":
-                ts = line[0]
-                uuid = line[2]
-                major = line[3]
-                minor = line[4]
-                rssi = line[6]
-                ibeacon_entry = [ts, f"{uuid}_{major}_{minor}", rssi]
-                ibeacons.append(ibeacon_entry)
-                continue
+    for line_data in lines:
+        line_data = line_data.strip()
+        if not line_data or line_data[0] == '#':
+            continue
+        line_data = line_data.split('\t')
 
-            if line[1] == "TYPE_WAYPOINT":
-                positions.append([int(line[0]), float(line[2]), float(line[3])])
-                continue
+        if line_data[1] == 'TYPE_ACCELEROMETER':
+            acce_data.append([int(line_data[0]), float(line_data[2]), float(line_data[3]), float(line_data[4])])
+        elif line_data[1] == 'TYPE_MAGNETIC_FIELD':
+            magn_data.append([int(line_data[0]), float(line_data[2]), float(line_data[3]), float(line_data[4])])
+        elif line_data[1] == 'TYPE_ROTATION_VECTOR':
+            ahrs_data.append([int(line_data[0]), float(line_data[2]), float(line_data[3]), float(line_data[4])])
+        elif line_data[1] == 'TYPE_WAYPOINT':
+            wayp_data.append([int(line_data[0]), float(line_data[2]), float(line_data[3])])
 
-            if line[1] == "TYPE_ROTATION_VECTOR":
-                ahrs.append([int(line[0]), float(line[2]), float(line[3]), float(line[4])])
-                continue
+    if verbose:
+        print(f"# of accelerometer data: {len(acce_data)}")
+        print(f"# of geomagnetic data : {len(magn_data)}")
+        print(f"# of rotation vect data: {len(ahrs_data)}")
+        print(f"# of waypoints data   : {len(wayp_data)}")
 
-    ibeacons = np.array(ibeacons)
-    acceleration = np.array(acceleration)
-    positions = np.array(positions)
-    ahrs = np.array(ahrs)
+    return np.array(acce_data), np.array(magn_data), np.array(ahrs_data), np.array(wayp_data)
 
-    return {"ibeacon": ibeacons, "acce": acceleration, "waypoint": positions, "ahrs": ahrs}
+# Function to map magnetic data to positions
+def get_nearest_position_to_magn_data(step_pos: np.array, magn_data: np.array) -> pd.DataFrame:
+    magn_data_df = pd.DataFrame(data=magn_data, columns=['timestamp', 'x', 'y', 'z'])
+    step_pos_df = pd.DataFrame(data=step_pos, columns=['timestamp', 'x', 'y'])
+    magn_data_df = magn_data_df.sort_values(by=['timestamp']).drop_duplicates(keep='first')
+    mag_pos_datas = pd.merge_asof(magn_data_df, step_pos_df, on="timestamp", direction='nearest', suffixes=('', '_pos'))
+    return mag_pos_datas
 
-def read_file_ibeacon(path_data_files):
-    print(f"Reading {path_data_files}...")
-    path_datas = parse_file_ibeacon(path_data_files)
-    ibeacon_datas = path_datas["ibeacon"]
-    acce_datas = path_datas["acce"]
-    ahrs_datas = path_datas["ahrs"]
-    posi_datas = path_datas["waypoint"]
-    return ibeacon_datas, acce_datas, ahrs_datas, posi_datas
+# Function to calculate magnetic strength
+def calculate_magnetic_strength(mag_pos_datas: pd.DataFrame) -> pd.DataFrame:
+    mag_pos_datas['magn_strength'] = np.sqrt(mag_pos_datas['x'] ** 2 + mag_pos_datas['y'] ** 2 + mag_pos_datas['z'] ** 2)
+    avg_magn_strength = mag_pos_datas.groupby(['x_pos', 'y_pos'], as_index=False)['magn_strength'].mean()
+    return avg_magn_strength
 
-def get_ibeacon_to_position(ibeacon_datas, acce_datas, ahrs_datas, posi_datas, augment=False):
-    ibeacon_extraction = {}
-    step_positions = compute_step_positions(acce_datas, ahrs_datas, posi_datas)
-    if not augment:
-        step_positions = posi_datas
+# Function to plot and save geomagnetic heatmap
+def plot_and_save_geomagnetic_heatmap(mag_strength_pos_data: pd.DataFrame, path_dir: str, site_id: int,
+                                      floor_id: str, augment: bool = True, save_img: bool = False):
+    x_pos = mag_strength_pos_data['x_pos'].values
+    y_pos = mag_strength_pos_data['y_pos'].values
+    strength = mag_strength_pos_data['magn_strength'].values
 
-    if ibeacon_datas.size > 0:
-        ts_list = np.unique(ibeacon_datas[:, 0].astype(float))
-        ibeacon_data_list = split_ts_seq(ibeacon_datas, ts_list)
-        for ibeacon_data in ibeacon_data_list:
-            diff = np.abs(step_positions[:, 0] - float(ibeacon_data[0, 0]))
-            index = np.argmin(diff)
-            target_xy_key = tuple(step_positions[index, 1:3])
-            if target_xy_key in ibeacon_extraction:
-                ibeacon_extraction[target_xy_key] = np.append(ibeacon_extraction[target_xy_key], ibeacon_data, axis=0)
-            else:
-                ibeacon_extraction[target_xy_key] = ibeacon_data
-
-    return ibeacon_extraction
-
-def get_axes_values(ibeacon_extraction):
-    ibeacon_rssi = {}
-    for key in ibeacon_extraction.keys():
-        for ibeacon_d in ibeacon_extraction[key]:
-            ummid = ibeacon_d[1]
-            rssi = int(ibeacon_d[2])
-            if ummid in ibeacon_rssi:
-                position_rssi = ibeacon_rssi[ummid]
-                if key in position_rssi:
-                    old_rssi = position_rssi[key][0]
-                    old_count = position_rssi[key][1]
-                    position_rssi[key][0] = (old_rssi * old_count + rssi) / (old_count + 1)
-                    position_rssi[key][1] = old_count + 1
-                else:
-                    position_rssi[key] = np.array([rssi, 1])
-            else:
-                position_rssi = {}
-                position_rssi[key] = np.array([rssi, 1])
-            ibeacon_rssi[ummid] = position_rssi
-
-    return ibeacon_rssi
-
-def draw_heatmap(position, value, floor_plan_filename, width, height, title, filename):
-    fig = go.Figure()
-
-    # add heat map
-    fig.add_trace(
-        go.Scatter(x=position[:, 0],
-                   y=position[:, 1],
-                   mode='markers',
-                   marker=dict(size=7,
-                               color=value,
-                               colorbar=dict(title="dBm"),
-                               colorscale="Rainbow"),
-                   text=value,
-                   name=title))
-
-    # add image
-    floor_plan = Image.open(floor_plan_filename)
-    fig.update_layout(images=[
-        go.layout.Image(
-            source=floor_plan,
-            xref="x",
-            yref="y",
-            x=0,
-            y=height,
-            sizex=width,
-            sizey=height,
-            sizing="contain",
-            opacity=1,
-            layer="below",
+    data = [go.Scatter(
+        x=x_pos, y=y_pos,
+        mode='markers',
+        marker=dict(
+            color=strength,
+            colorbar=dict(title="μT"),
+            colorscale="Rainbow",
+            cmin=0,
+            cmax=100,
+            size=5,
         )
-    ])
+    )]
 
-    # configure
-    fig.update_xaxes(autorange=False, range=[0, width])
-    fig.update_yaxes(autorange=False, range=[0, height], scaleanchor="x", scaleratio=1)
-    fig.update_layout(
-        title=go.layout.Title(
-            text=title or "No title.",
-            xref="paper",
-            x=0,
-        ),
+    with open(os.path.join(path_dir, FLOOR_INFO_JSON_FILE)) as f:
+        floor_info = json.load(f)
+    height_meter = floor_info['map_info']['height']
+    width_meter = floor_info['map_info']['width']
+
+    with open(os.path.join(path_dir, FLOOR_IMAGE_FILE), 'rb') as image_file:
+        floor_plan = base64.b64encode(image_file.read()).decode('utf-8')
+    
+    img_bg = {
+        'source': f'data:image/png;base64,{floor_plan}',
+        'xref': 'x', 'yref': 'y',
+        'x': 0, 'y': height_meter,
+        'sizex': width_meter, 'sizey': height_meter,
+        'sizing': 'contain', 'opacity': 1, 'layer': "below",
+    }
+
+    layout = go.Layout(
+        xaxis=dict(autorange=False, range=[0, width_meter], showticklabels=False, showgrid=False, zeroline=False),
+        yaxis=dict(autorange=False, range=[0, height_meter], showticklabels=False, showgrid=False, zeroline=False,
+                   scaleanchor='x', scaleratio=1),
         autosize=True,
         width=900,
-        height=200 + 900 * height / width,
-        template="plotly_white",
+        height=100 + 900 * height_meter / width_meter,
+        template='plotly_white',
+        images=[img_bg]
     )
 
-    fig.write_image(filename)
+    fig = go.Figure(data=data, layout=layout)
 
+    if save_img:
+        output_filepath = os.path.join(OUTPUT_DIR, f"site{site_id}")
+        Path(output_filepath).mkdir(parents=True, exist_ok=True)
+        file_name = f'{floor_id}.png' if augment else f'{floor_id}_unaugmented.png'
+        fig.write_image(os.path.join(output_filepath, file_name))
+
+# Function to generate geomagnetic heatmap
+def get_geomagnetic_heatmap(site_id: int, floor_id: str, augment: bool = True, save_img: bool = False):
+    path_dir = os.path.join(DATA_DIR, f'site{site_id}', floor_id)
+    data_files_path_dir = os.path.join(path_dir, PATH_DATA_DIR)
+    
+    if not os.path.exists(data_files_path_dir):
+        print(f"Directory does not exist: {data_files_path_dir}")
+        return
+
+    data_filenames = [f for f in os.listdir(data_files_path_dir) if os.path.isfile(os.path.join(data_files_path_dir, f))]
+
+    mag_pos_datas = []
+    for data_filename in data_filenames:
+        data_filename = os.path.join(data_files_path_dir, data_filename)
+        acce_data, magn_data, ahrs_data, wayp_data = read_data_file(data_filename)
+        if augment:
+            wayp_data = compute_step_positions(acce_data, ahrs_data, wayp_data)
+        mag_pos_datas.append(get_nearest_position_to_magn_data(wayp_data, magn_data))
+
+    mag_pos_data_df = pd.concat(mag_pos_datas, ignore_index=True)
+    mag_strength_pos_data = calculate_magnetic_strength(mag_pos_data_df)
+
+    plot_and_save_geomagnetic_heatmap(mag_strength_pos_data, path_dir, site_id, floor_id, augment, save_img)
+
+# List of sites and floors
+sites_and_floors = [
+    ('site1', 'B1'), ('site1', 'F1'), ('site1', 'F2'), ('site1', 'F3'), ('site1', 'F4'),
+    ('site2', 'B1'), ('site2', 'F1'), ('site2', 'F2'), ('site2', 'F3'), ('site2', 'F4'), 
+    ('site2', 'F5'), ('site2', 'F6'), ('site2', 'F7'), ('site2', 'F8')
+]
+
+# Function to ensure the directory exists
+def ensure_directory_exists(directory):
+    if not os.path.exists(directory):
+        print(f"Directory does not exist: {directory}")
+        return False
+    return True
+
+# Main processing loop
 if __name__ == "__main__":
-    # Define the directories for the sites and floors
-    floor_dirs = [
-        "data/site1/B1", "data/site1/F1", "data/site1/F2", "data/site1/F3", "data/site1/F4",
-        "data/site2/B1", "data/site2/F1", "data/site2/F2", "data/site2/F3", 
-        "data/site2/F4", "data/site2/F5", "data/site2/F6", "data/site2/F7", "data/site2/F8"
-    ]
+    for site, floor in sites_and_floors:
+        print(f"Processing {site} - {floor}")
+        path_dir = os.path.join(DATA_DIR, f"site{site[-1]}", floor)
+        data_files_path_dir = os.path.join(path_dir, PATH_DATA_DIR)
 
-    # Process each floor
-    for floor_dir in floor_dirs:
-        floor_plan_filename = os.path.join(floor_dir, "floor_image.png")
-        floor_info_filename = os.path.join(floor_dir, "floor_info.json")
-        path_data_dir = os.path.join(floor_dir, "path_data_files")
-        output_dir = os.path.join("output", floor_dir.split("data")[1], "ibeacons")
+        # Ensure that the directory exists before attempting to process it
+        if not ensure_directory_exists(data_files_path_dir):
+            print(f"Skipping {site} - {floor} due to missing directory.")
+            continue
 
-        with open(floor_info_filename) as f:
-            floor_info = json.load(f)
-        width_meter = floor_info["map_info"]["width"]
-        height_meter = floor_info["map_info"]["height"]
+        save_path = os.path.join(OUTPUT_DIR, f"{site}--{floor}")
+        if not os.path.exists(save_path):
+            os.makedirs(save_path, exist_ok=True)
 
-        for data_file in os.listdir(path_data_dir):
-            ibeacon_datas, acce_datas, ahrs_datas, posi_datas = read_file_ibeacon(
-                os.path.join(path_data_dir, data_file)
-            )
-            ibeacon_extractions = get_ibeacon_to_position(ibeacon_datas, acce_datas, ahrs_datas, posi_datas)
-            ibeacon_rssi = get_axes_values(ibeacon_extractions)
-            print(f'This file has {len(ibeacon_rssi.keys())} ibeacons')
+        try:
+            get_geomagnetic_heatmap(site[-1], floor, augment=True, save_img=True)
+        except Exception as e:
+            print(f"An error occurred while processing {site} - {floor}: {e}")
 
-            for target_ibeacon in ibeacon_rssi.keys():
-                heat_positions = np.array(list(ibeacon_rssi[target_ibeacon].keys()))
-                heat_values = np.array(list(ibeacon_rssi[target_ibeacon].values()))[:, 0]
-                output_filename = os.path.join(output_dir, f"{target_ibeacon}.png")
-                Path(output_dir).mkdir(parents=True, exist_ok=True)
-                draw_heatmap(heat_positions, heat_values, floor_plan_filename, width_meter,
-                             height_meter, f'iBeacon: {target_ibeacon} RSSI', output_filename)
+    print("Done")

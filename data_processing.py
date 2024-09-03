@@ -28,40 +28,6 @@ def get_waypoints(txt_path: str, xy_only=True):
 
     return wp[:, 1:] if xy_only else wp
 
-
-def get_ibeacons(txt_path: str, xy_only=True):
-    ibeacons = []
-    
-    # Parse the text file
-    with open(txt_path, 'r', encoding='utf-8') as file:
-        lines = file.readlines()
-        for line in lines:
-            line = line.strip()
-            if not line or line.startswith('#'):
-                continue
-
-            line_data = line.split('\t')
-            if line_data[1] == 'TYPE_BEACON':
-                # Unix Time, UUID, Major, Minor, X Pos, Y Pos, RSSI
-                try:
-                    # Adjust these indices based on your data format
-                    x_pos = float(line_data[4])  # Assuming X Pos is in the 5th column
-                    y_pos = float(line_data[5])  # Assuming Y Pos is in the 6th column
-                    ibeacons.append([int(line_data[0]), x_pos, y_pos])
-                except (IndexError, ValueError) as e:
-                    print(f"Skipping line due to error: {e} | Line content: {line_data}")
-
-    if len(ibeacons) == 0:
-        print(f"No valid iBeacon data found in file: {txt_path}")
-        return np.array([])  # Return an empty array if no valid data is found
-
-    ibeacons = np.array(ibeacons)
-
-    return ibeacons[:, 1:] if xy_only else ibeacons
-
-
-
-
 def augment_waypoints(waypoints, accelerometer_data, rotation_data):
     """
     Augments the waypoints using accelerometer and rotation vector data.
