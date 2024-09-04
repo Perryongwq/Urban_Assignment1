@@ -1,14 +1,13 @@
-import os
 import json
-import base64
+import os
+import random
+import matplotlib.pyplot as plt
+import matplotlib.image as mpimg
 import numpy as np
-import pandas as pd
-import plotly.graph_objects as go
-from pathlib import Path
-from typing import Tuple
-from utils.compute_f import compute_step_positions
 
-# Configuration constants
+from data_processing import extract_magnetic_positions
+
+""" CONFIG CONSTANTS """
 RANDOM_SEED = 42
 DATA_DIR = os.path.join(os.getcwd(), 'data')
 OUTPUT_DIR = os.path.join(os.getcwd(), 'output')
@@ -16,163 +15,107 @@ PATH_DATA_DIR = 'path_data_files'
 FLOOR_INFO_JSON_FILE = 'floor_info.json'
 FLOOR_IMAGE_FILE = 'floor_image.png'
 SAVE_IMG_DPI = 200
+MAGNETIC_RANGE = None  # Set this as needed
 
-# Function to read data file
-def read_data_file(data_filename: str, verbose: bool = False) -> Tuple[np.array, np.array, np.array, np.array]:
-    with open(data_filename, 'r', encoding='utf-8') as file:
-        lines = file.readlines()
+""" UTILITY FUNCTIONS """
+def create_dir(directory: str) -> None:
+    """Creates a directory if it doesn't exist."""
+    os.makedirs(directory, exist_ok=True)
 
-    acce_data, magn_data, ahrs_data, wayp_data = [], [], [], []
+def get_site_floors(data_dir: str) -> list:
+    """Retrieves a list of site floors from the given data directory."""
+    site_floors = []
+    for site in os.scandir(data_dir):
+        if site.is_dir():
+            site_name = site.name
+            site_floors.extend((site_name, floor.name) for floor in os.scandir(site.path) if floor.is_dir())
+    return site_floors
 
-    for line_data in lines:
-        line_data = line_data.strip()
-        if not line_data or line_data[0] == '#':
-            continue
-        line_data = line_data.split('\t')
+def main():
+    save_dir = os.path.join(OUTPUT_DIR, 'geomagnetic_visualization')
 
-        if line_data[1] == 'TYPE_ACCELEROMETER':
-            acce_data.append([int(line_data[0]), float(line_data[2]), float(line_data[3]), float(line_data[4])])
-        elif line_data[1] == 'TYPE_MAGNETIC_FIELD':
-            magn_data.append([int(line_data[0]), float(line_data[2]), float(line_data[3]), float(line_data[4])])
-        elif line_data[1] == 'TYPE_ROTATION_VECTOR':
-            ahrs_data.append([int(line_data[0]), float(line_data[2]), float(line_data[3]), float(line_data[4])])
-        elif line_data[1] == 'TYPE_WAYPOINT':
-            wayp_data.append([int(line_data[0]), float(line_data[2]), float(line_data[3])])
+    # Set configuration manually instead of using argparse
+    save_dpi = SAVE_IMG_DPI
 
-    if verbose:
-        print(f"# of accelerometer data: {len(acce_data)}")
-        print(f"# of geomagnetic data : {len(magn_data)}")
-        print(f"# of rotation vect data: {len(ahrs_data)}")
-        print(f"# of waypoints data   : {len(wayp_data)}")
+    if save_dir:
+        create_dir(save_dir)
 
-    return np.array(acce_data), np.array(magn_data), np.array(ahrs_data), np.array(wayp_data)
+    for site, floor in get_site_floors(DATA_DIR):
+        print(site, ' ------------ ', floor)
 
-# Function to map magnetic data to positions
-def get_nearest_position_to_magn_data(step_pos: np.array, magn_data: np.array) -> pd.DataFrame:
-    magn_data_df = pd.DataFrame(data=magn_data, columns=['timestamp', 'x', 'y', 'z'])
-    step_pos_df = pd.DataFrame(data=step_pos, columns=['timestamp', 'x', 'y'])
-    magn_data_df = magn_data_df.sort_values(by=['timestamp']).drop_duplicates(keep='first')
-    mag_pos_datas = pd.merge_asof(magn_data_df, step_pos_df, on="timestamp", direction='nearest', suffixes=('', '_pos'))
-    return mag_pos_datas
+        # Visualize original data (no augmentation)
+        visualize_geomagnetic(site, floor, save_dir, save_dpi=save_dpi, augment_wp=False, m_range=MAGNETIC_RANGE)
 
-# Function to calculate magnetic strength
-def calculate_magnetic_strength(mag_pos_datas: pd.DataFrame) -> pd.DataFrame:
-    mag_pos_datas['magn_strength'] = np.sqrt(mag_pos_datas['x'] ** 2 + mag_pos_datas['y'] ** 2 + mag_pos_datas['z'] ** 2)
-    avg_magn_strength = mag_pos_datas.groupby(['x_pos', 'y_pos'], as_index=False)['magn_strength'].mean()
-    return avg_magn_strength
+        # Visualize augmented data
+        visualize_geomagnetic(site, floor, save_dir, save_dpi=save_dpi, augment_wp=True, m_range=MAGNETIC_RANGE)
 
-# Function to plot and save geomagnetic heatmap
-def plot_and_save_geomagnetic_heatmap(mag_strength_pos_data: pd.DataFrame, path_dir: str, site_id: int,
-                                      floor_id: str, augment: bool = True, save_img: bool = False):
-    x_pos = mag_strength_pos_data['x_pos'].values
-    y_pos = mag_strength_pos_data['y_pos'].values
-    strength = mag_strength_pos_data['magn_strength'].values
 
-    data = [go.Scatter(
-        x=x_pos, y=y_pos,
-        mode='markers',
-        marker=dict(
-            color=strength,
-            colorbar=dict(title="μT"),
-            colorscale="Rainbow",
-            cmin=0,
-            cmax=100,
-            size=5,
-        )
-    )]
+def visualize_geomagnetic(site, floor, save_dir=None, save_dpi=160, augment_wp=True, m_range=None):
+    random.seed(RANDOM_SEED)
+    floor_path = os.path.join(DATA_DIR, site, floor)
 
-    with open(os.path.join(path_dir, FLOOR_INFO_JSON_FILE)) as f:
-        floor_info = json.load(f)
-    height_meter = floor_info['map_info']['height']
-    width_meter = floor_info['map_info']['width']
+    # Parse magnetic data
+    floor_data_path = os.path.join(floor_path, PATH_DATA_DIR)
+    file_list = os.listdir(floor_data_path)
+    floor_magnetic_data = np.zeros((0, 3))
+    total_waypoints = 0
+    total_mg = 0
+    for filename in file_list:
+        txt_path = os.path.join(floor_data_path, filename)
+        magnetic_data, ori_mg_count, wp_count = extract_magnetic_positions(txt_path, augment_wp)
+        total_mg += ori_mg_count
+        total_waypoints += wp_count
+        if len(magnetic_data) > 0:
+            magnetic_wp_str = np.array(magnetic_data)[:, 1:4].astype(float)
+            floor_magnetic_data = np.append(floor_magnetic_data, magnetic_wp_str, axis=0)
+        else:
+            print(f"No magnetic data extracted from {filename} for augment_wp={augment_wp}")
 
-    with open(os.path.join(path_dir, FLOOR_IMAGE_FILE), 'rb') as image_file:
-        floor_plan = base64.b64encode(image_file.read()).decode('utf-8')
-    
-    img_bg = {
-        'source': f'data:image/png;base64,{floor_plan}',
-        'xref': 'x', 'yref': 'y',
-        'x': 0, 'y': height_meter,
-        'sizex': width_meter, 'sizey': height_meter,
-        'sizing': 'contain', 'opacity': 1, 'layer': "below",
-    }
-
-    layout = go.Layout(
-        xaxis=dict(autorange=False, range=[0, width_meter], showticklabels=False, showgrid=False, zeroline=False),
-        yaxis=dict(autorange=False, range=[0, height_meter], showticklabels=False, showgrid=False, zeroline=False,
-                   scaleanchor='x', scaleratio=1),
-        autosize=True,
-        width=900,
-        height=100 + 900 * height_meter / width_meter,
-        template='plotly_white',
-        images=[img_bg]
-    )
-
-    fig = go.Figure(data=data, layout=layout)
-
-    if save_img:
-        output_filepath = os.path.join(OUTPUT_DIR, f"site{site_id}")
-        Path(output_filepath).mkdir(parents=True, exist_ok=True)
-        file_name = f'{floor_id}.png' if augment else f'{floor_id}_unaugmented.png'
-        fig.write_image(os.path.join(output_filepath, file_name))
-
-# Function to generate geomagnetic heatmap
-def get_geomagnetic_heatmap(site_id: int, floor_id: str, augment: bool = True, save_img: bool = False):
-    path_dir = os.path.join(DATA_DIR, f'site{site_id}', floor_id)
-    data_files_path_dir = os.path.join(path_dir, PATH_DATA_DIR)
-    
-    if not os.path.exists(data_files_path_dir):
-        print(f"Directory does not exist: {data_files_path_dir}")
+    # Check if there is data to visualize
+    if floor_magnetic_data.shape[0] == 0:
+        print(f"No data available for visualization on {site} -- {floor} with augment_wp={augment_wp}.")
         return
 
-    data_filenames = [f for f in os.listdir(data_files_path_dir) if os.path.isfile(os.path.join(data_files_path_dir, f))]
+    # Read floor information to get map height, width
+    json_path = os.path.join(floor_path, FLOOR_INFO_JSON_FILE)
+    with open(json_path) as file:
+        map_info = json.load(file)['map_info']
+    map_height, map_width = map_info['height'], map_info['width']
 
-    mag_pos_datas = []
-    for data_filename in data_filenames:
-        data_filename = os.path.join(data_files_path_dir, data_filename)
-        acce_data, magn_data, ahrs_data, wayp_data = read_data_file(data_filename)
-        if augment:
-            wayp_data = compute_step_positions(acce_data, ahrs_data, wayp_data)
-        mag_pos_datas.append(get_nearest_position_to_magn_data(wayp_data, magn_data))
+    img = mpimg.imread(os.path.join(floor_path, FLOOR_IMAGE_FILE))
+    reversed_color_map = plt.cm.get_cmap('inferno').reversed()
 
-    mag_pos_data_df = pd.concat(mag_pos_datas, ignore_index=True)
-    mag_strength_pos_data = calculate_magnetic_strength(mag_pos_data_df)
+    plt.clf()
+    plt.imshow(img)
+    map_scaler = (img.shape[0] / map_height + img.shape[1] / map_width) / 2
+    x = floor_magnetic_data[:, 0] * map_scaler
+    y = img.shape[0] - floor_magnetic_data[:, 1] * map_scaler
+    m_strength = floor_magnetic_data[:, 2]
 
-    plot_and_save_geomagnetic_heatmap(mag_strength_pos_data, path_dir, site_id, floor_id, augment, save_img)
+    if m_range:
+        plt.scatter(x, y, c=m_strength, s=10, vmin=m_range[0], vmax=m_range[1], cmap=reversed_color_map)
+    else:
+        plt.scatter(x, y, c=m_strength, s=10, cmap=reversed_color_map)
+    plt.colorbar(cmap=reversed_color_map)
+    plt.xticks((np.arange(25, map_width, 25) * map_scaler).astype('uint'),
+               np.arange(25, map_width, 25).astype('uint'))
+    plt.yticks((img.shape[0] - np.arange(25, map_height, 25) * map_scaler).astype('uint'),
+               np.arange(25, map_height, 25).astype('uint'))
 
-# List of sites and floors
-sites_and_floors = [
-    ('site1', 'B1'), ('site1', 'F1'), ('site1', 'F2'), ('site1', 'F3'), ('site1', 'F4'),
-    ('site2', 'B1'), ('site2', 'F1'), ('site2', 'F2'), ('site2', 'F3'), ('site2', 'F4'), 
-    ('site2', 'F5'), ('site2', 'F6'), ('site2', 'F7'), ('site2', 'F8')
-]
+    if not augment_wp:
+        plt.title(f"{site} - {floor} -- {total_mg} Mag: Ori {total_waypoints} Waypoints".title())
+    else:
+        plt.title(f"{site} - {floor} -- {total_mg} Mag: Aug {total_waypoints} Waypoints".title())
 
-# Function to ensure the directory exists
-def ensure_directory_exists(directory):
-    if not os.path.exists(directory):
-        print(f"Directory does not exist: {directory}")
-        return False
-    return True
+    if save_dir:
+        if augment_wp:
+            save_path = os.path.join(save_dir, site + "--" + floor + "--A")  # Augmented file name with A
+        else:
+            save_path = os.path.join(save_dir, site + "--" + floor + "--0")  # Original file name with 0
+        plt.savefig(save_path, dpi=save_dpi)
+    else:
+        plt.show()
 
-# Main processing loop
-if __name__ == "__main__":
-    for site, floor in sites_and_floors:
-        print(f"Processing {site} - {floor}")
-        path_dir = os.path.join(DATA_DIR, f"site{site[-1]}", floor)
-        data_files_path_dir = os.path.join(path_dir, PATH_DATA_DIR)
 
-        # Ensure that the directory exists before attempting to process it
-        if not ensure_directory_exists(data_files_path_dir):
-            print(f"Skipping {site} - {floor} due to missing directory.")
-            continue
-
-        save_path = os.path.join(OUTPUT_DIR, f"{site}--{floor}")
-        if not os.path.exists(save_path):
-            os.makedirs(save_path, exist_ok=True)
-
-        try:
-            get_geomagnetic_heatmap(site[-1], floor, augment=True, save_img=True)
-        except Exception as e:
-            print(f"An error occurred while processing {site} - {floor}: {e}")
-
-    print("Done")
+if __name__ == '__main__':
+    main()
