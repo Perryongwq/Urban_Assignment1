@@ -32,7 +32,7 @@ def get_site_floors(data_dir: str) -> list:
     return site_floors
 
 def main():
-    save_dir = os.path.join(OUTPUT_DIR, 'geomagnetic_visualization')
+    save_dir = os.path.join(OUTPUT_DIR, 'essential_task3')
 
     # Set configuration manually instead of using argparse
     save_dpi = SAVE_IMG_DPI
