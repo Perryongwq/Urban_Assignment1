@@ -6,11 +6,7 @@ import numpy as np
 import matplotlib.image as mpimg
 import matplotlib.pyplot as plt
 import seaborn as sns
-from collections import defaultdict
-from utils.compute_f import compute_step_positions
 
-# Existing imports from essential_task1.py
-from data_processing import get_waypoints
 
 """ CONFIG CONSTANTS """
 RANDOM_SEED = 42
@@ -36,8 +32,7 @@ def get_site_floors(data_dir: str) -> list:
     return site_floors
 
 """ MAIN FUNCTIONALITY """
-def get_data_from_one_txt(txtpath, augmentation=True):
-    # This function handles the data extraction and augmentation
+def get_data_from_one_txt(txtpath):
     acce = []
     magn = []
     ahrs = []
@@ -79,16 +74,10 @@ def get_data_from_one_txt(txtpath, augmentation=True):
 
     acce, magn, ahrs, wifi, ibeacon, waypoint = np.array(acce), np.array(magn), np.array(ahrs), np.array(wifi), np.array(ibeacon), np.array(waypoint)
 
-    if augmentation:
-        augmented_data = compute_step_positions(acce, ahrs, waypoint)
-    else:
-        augmented_data = waypoint
+    return waypoint[:, 1:3]  
 
-    # Returning the augmented or original waypoint data
-    return augmented_data[:, 1:3]  # Return only positions
-
-def visualize_waypoints(site, floor, save_dir=None, save_dpi=160, wp_augment=False):
-    random.seed(RANDOM_SEED)  # this ensures the color printed each time is the same
+def visualize_waypoints(site, floor, save_dir=None, save_dpi=160):
+    random.seed(RANDOM_SEED)  
     floor_path = os.path.join(DATA_DIR, site, floor)
 
     floor_waypoints = []
@@ -96,7 +85,7 @@ def visualize_waypoints(site, floor, save_dir=None, save_dpi=160, wp_augment=Fal
     txt_filenames = os.listdir(floor_data_path)
     for filename in txt_filenames:
         txt_path = os.path.join(floor_data_path, filename)
-        txt_waypoints = get_data_from_one_txt(txt_path, augmentation=wp_augment)
+        txt_waypoints = get_data_from_one_txt(txt_path)
         floor_waypoints.append(txt_waypoints)
 
     # Read floor information to get map height and width
@@ -109,13 +98,9 @@ def visualize_waypoints(site, floor, save_dir=None, save_dpi=160, wp_augment=Fal
     img = mpimg.imread(os.path.join(floor_path, FLOOR_IMAGE_FILE))
     sns.reset_orig()
 
-    # Choose colors based on whether waypoints are augmented
-    if wp_augment:
-        colors = sns.color_palette('bright', n_colors=10)  # Different color palette for augmented waypoints
-    else:
-        colors = sns.color_palette('dark', n_colors=10)
+    colors = sns.color_palette('dark', n_colors=10)  
 
-    plt.rcParams['axes.prop_cycle'] = plt.cycler(color=colors)  # Set colors
+    plt.rcParams['axes.prop_cycle'] = plt.cycler(color=colors)  
     plt.clf()
     plt.imshow(img)
     map_scaler = (img.shape[0] / map_height + img.shape[1] / map_width) / 2
@@ -127,10 +112,7 @@ def visualize_waypoints(site, floor, save_dir=None, save_dpi=160, wp_augment=Fal
         x, y = x * map_scaler, img.shape[0] - y * map_scaler
         plt.plot(x, y, linewidth='0.5', linestyle='-', marker='x', markersize=3)
 
-    if not wp_augment:
-        plt.title(f"{site} - {floor} - {total_waypoints} Waypoints".title())
-    else:
-        plt.title(f"{site} - {floor} - {total_waypoints} Augmented Waypoints".title())
+    plt.title(f"{site} - {floor} - {total_waypoints} Waypoints".title())
 
     plt.xticks((np.arange(25, map_width, 25) * map_scaler).astype('uint'),
                np.arange(25, map_width, 25).astype('uint'))
@@ -139,10 +121,7 @@ def visualize_waypoints(site, floor, save_dir=None, save_dpi=160, wp_augment=Fal
     plt.tight_layout()
 
     if save_dir:
-        if not wp_augment:
-            save_path = os.path.join(save_dir, site + "--" + floor)
-        else:
-            save_path = os.path.join(save_dir, site + "--" + floor + "--" + "A")
+        save_path = os.path.join(save_dir, site + "--" + floor)
         plt.savefig(save_path, dpi=save_dpi)
     else:
         plt.show()
@@ -160,10 +139,8 @@ def main(save_dir=None, save_dpi=SAVE_IMG_DPI):
     all_waypoints = {}
     for site, floor in get_site_floors(DATA_DIR):
         print(f"Processing site: {site}, floor: {floor}")
-        # Process with and without augmentation
-        wp_count = visualize_waypoints(site, floor, save_dir, save_dpi, wp_augment=False)
-        aug_wp_count = visualize_waypoints(site, floor, save_dir, save_dpi, wp_augment=True)
-        all_waypoints[(site, floor)] = {'original': wp_count, 'augmented': aug_wp_count}
+        wp_count = visualize_waypoints(site, floor, save_dir, save_dpi)
+        all_waypoints[(site, floor)] = {'original': wp_count}
 
     print(f"All waypoints processed: {all_waypoints}")
     print("COMPLETED")

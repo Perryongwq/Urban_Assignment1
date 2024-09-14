@@ -93,7 +93,8 @@ def read_data_file(txtpath, augmentation=True):
 
 
 def split_floor_data(site, floor, testratio=0.1, augmentation=True): # (100 + rssi) / 100  ->  (0,1)
-    file_path = os.path.join('../data', site, floor)
+    DATA_DIR = os.path.join(os.getcwd(), 'data')
+    file_path = os.path.join(DATA_DIR, site, floor)
     file_list = os.listdir(os.path.join(file_path, "path_data_files"))
 
     total_posMagn_data = np.zeros((0, 6)).astype('float') # (Posx, Posy, MagnX, MagnY, MagnZ, MagnI)

@@ -1,4 +1,5 @@
 __pycache__
-essential_task3.py
-essential_task2_2.py
-output/essential_task2 copy
+.ipynb_checkpoints
+data.py
+preprocessing.py
+bonus_task_test.py
