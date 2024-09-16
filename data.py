@@ -2,11 +2,8 @@ import os
 import numpy as np
 from collections import defaultdict
 import random
-from utils.compute_f import compute_step_positions
 
-
-inf = float('inf')
-def read_data_file(txtpath, augmentation=True):
+def get_data_from_one_txt(txtpath):
     acce = []
     magn = []
     ahrs = []
@@ -48,81 +45,74 @@ def read_data_file(txtpath, augmentation=True):
 
     acce, magn, ahrs, wifi, ibeacon, waypoint = np.array(acce), np.array(magn), np.array(ahrs), np.array(wifi), np.array(ibeacon), np.array(waypoint)
 
-    if augmentation:
-        augmented_data = compute_step_positions(acce, ahrs, waypoint)
-    else:
-        augmented_data = waypoint
+    augmented_data = waypoint  # No augmentation
 
-    index2data = [{'magn':[], 'wifi':defaultdict(list), 'ibeacon':defaultdict(list)} for _ in range(len(augmented_data))]
-    index2time = augmented_data[:,0]
+    index2data = [{'magn': [], 'wifi': defaultdict(list), 'ibeacon': defaultdict(list)} for _ in range(len(augmented_data))]
+    index2time = augmented_data[:, 0]
     for magn_data in magn: 
         tdiff = abs(index2time - magn_data[0])
         i = np.argmin(tdiff)
-        index2data[i]['magn'].append((magn_data[1], magn_data[2], magn_data[3])) 
+        index2data[i]['magn'].append((magn_data[1], magn_data[2], magn_data[3]))
     for wifi_data in wifi:
         tdiff = abs(index2time - int(wifi_data[0]))
         i = np.argmin(tdiff)
-        index2data[i]['wifi'][wifi_data[1]].append(int(wifi_data[2])) 
+        index2data[i]['wifi'][wifi_data[1]].append(int(wifi_data[2]))
     for ibeacon_data in ibeacon:
         tdiff = abs(index2time - int(ibeacon_data[0]))
         i = np.argmin(tdiff)
-        index2data[i]['ibeacon'][ibeacon_data[1]].append(int(ibeacon_data[2])) 
+        index2data[i]['ibeacon'][ibeacon_data[1]].append(int(ibeacon_data[2]))
 
     txt_data = [None] * len(augmented_data)
     for index in range(len(index2time)):
         t, Px, Py = augmented_data[index]
-        txt_data[index] = [t,Px,Py]
-        magns, wifis, ibeacons = np.array(index2data[index]['magn']), index2data[index]['wifi'], index2data[index]['ibeacon'] 
+        txt_data[index] = [t, Px, Py]
+        magns, wifis, ibeacons = np.array(index2data[index]['magn']), index2data[index]['wifi'], index2data[index]['ibeacon']
         if len(magns) > 0:
             magn_mean = magns.mean(axis=0)
             magn_mean_intense = np.mean(np.sqrt(np.sum(magns**2, axis=1)))
             txt_data[index].extend(list(magn_mean) + [float(magn_mean_intense)])
         else:
-            txt_data[index].extend([0,0,0,0])
+            txt_data[index].extend([0, 0, 0, 0])
 
         txt_data[index].append(defaultdict(lambda: -100))
         for bssid, rssis in wifis.items():
-            txt_data[index][-1][bssid] = sum(rssis)/len(rssis)
+            txt_data[index][-1][bssid] = sum(rssis) / len(rssis)
 
         txt_data[index].append(defaultdict(lambda: -100))
         for uuid, rssis in ibeacons.items():
-            txt_data[index][-1][uuid] = sum(rssis)/len(rssis)
+            txt_data[index][-1][uuid] = sum(rssis) / len(rssis)
 
-    return txt_data 
+    return txt_data
 
 
-
-def split_floor_data(site, floor, testratio=0.1, augmentation=True): # (100 + rssi) / 100  ->  (0,1)
-    DATA_DIR = os.path.join(os.getcwd(), 'data')
-    file_path = os.path.join(DATA_DIR, site, floor)
+def split_floor_data(site, floor, testratio=0.1): 
+    file_path = os.path.join('./data', site, floor)
     file_list = os.listdir(os.path.join(file_path, "path_data_files"))
 
-    total_posMagn_data = np.zeros((0, 6)).astype('float') # (Posx, Posy, MagnX, MagnY, MagnZ, MagnI)
-    total_wifi_data = np.zeros((0,0)).astype('float') 
-    total_ibeacon_data = np.zeros((0,0)).astype('float') 
-    wifi_ibeacon_detected = np.zeros((0,2)).astype('float')
+    total_posMagn_data = np.zeros((0, 6)).astype('float')
+    total_wifi_data = np.zeros((0, 0)).astype('float')
+    total_ibeacon_data = np.zeros((0, 0)).astype('float')
+    wifi_ibeacon_detected = np.zeros((0, 2)).astype('float')
     index2bssid = []
     bssid2index = dict()
     index2uuid = []
     uuid2index = dict()
-    no_wifi_ibeacon = [0,0]
-    not_in_train_wifi_ibeacon = [0,0]
+    no_wifi_ibeacon = [0, 0]
+    not_in_train_wifi_ibeacon = [0, 0]
 
-    trajectory_data = np.zeros((0,9))
-    curfilenum = 0 # Del
+    trajectory_data = np.zeros((0, 9))
+    curfilenum = 0
     for filename in file_list:
-        curfilenum += 1 # Del
-        if curfilenum % 10 == 0: # Del
-            print(f'already read {curfilenum} txts') # Del
+        curfilenum += 1
         txtname = os.path.join(file_path, "path_data_files", filename)
-        trajectory_data = np.append(trajectory_data, np.array(read_data_file(txtname, augmentation=augmentation)), axis=0)
-    
+        trajectory_data = np.append(trajectory_data, np.array(get_data_from_one_txt(txtname)), axis=0)
+
     total_posMagn_data = trajectory_data[:, 1:7].astype('float')
     data_number = total_posMagn_data.shape[0]
     test_number = int(testratio * data_number)
     train_number = data_number - test_number
     test_indices = random.sample(range(data_number), test_number)
-    train_indices = list(set(range(data_number)).difference(test_indices))
+    train_indices = list(set(range(data_number)).difference(test_indices))    
     finish_number = 0
 
     # add train data the total data
@@ -142,10 +132,10 @@ def split_floor_data(site, floor, testratio=0.1, augmentation=True): # (100 + rs
         else: 
             no_wifi_ibeacon[0] += 1 
         for bssid, rssi in wifidic.items():
-            if bssid not in bssid2index: # for train set, if a bssid did not appear before, we should add it to a new feature.
+            if bssid not in bssid2index: 
                 bssid2index[bssid] = len(index2bssid)
                 index2bssid.append(bssid)
-                total_wifi_data = np.concatenate((total_wifi_data, np.zeros((total_wifi_data.shape[0], 1))), axis=1) # add a new feature
+                total_wifi_data = np.concatenate((total_wifi_data, np.zeros((total_wifi_data.shape[0], 1))), axis=1)
             total_wifi_data[-1][bssid2index[bssid]] = (100 + rssi) / 100
 
         ibeacondic = tdata[8]
@@ -154,7 +144,7 @@ def split_floor_data(site, floor, testratio=0.1, augmentation=True): # (100 + rs
         else: 
             no_wifi_ibeacon[1] += 1 
         for uuid, rssi in ibeacondic.items():
-            if uuid not in uuid2index: # for train set, if a uuid did not appear before, we should add it to a new feature.
+            if uuid not in uuid2index: 
                 uuid2index[uuid] = len(index2uuid)
                 index2uuid.append(uuid)
                 total_ibeacon_data = np.concatenate((total_ibeacon_data, np.zeros((total_ibeacon_data.shape[0], 1))), axis=1) # new feature
@@ -207,6 +197,9 @@ def split_floor_data(site, floor, testratio=0.1, augmentation=True): # (100 + rs
     print(f'Final wifi bssid number: {len(index2bssid)}, ibeacon uuid number: {len(index2uuid)}')
 
     return train_set, test_set, [bssid2index, uuid2index]
+
+
+
 
 
 
