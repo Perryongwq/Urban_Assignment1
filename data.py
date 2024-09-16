@@ -3,203 +3,150 @@ import numpy as np
 from collections import defaultdict
 import random
 
-def get_data_from_one_txt(txtpath):
-    acce = []
-    magn = []
-    ahrs = []
-    wifi = []
-    ibeacon = []
-    waypoint = []
 
-    with open(txtpath, 'r', encoding='utf-8') as file:
-        lines = file.readlines()
-        for line in lines:
+def get_data_from_one_txt(txt_path):
+    acce, magn, ahrs, wifi, ibeacon, waypoint = [], [], [], [], [], []
+
+    with open(txt_path, 'r', encoding='utf-8') as file:
+        for line in file:
             line = line.strip()
-            if not line or line[0] == '#':
+            if not line or line.startswith('#'):
                 continue
 
             line_data = line.split('\t')
+            timestamp = int(line_data[0])
+            data_type = line_data[1]
 
-            if line_data[1] == 'TYPE_ACCELEROMETER':
-                acce.append([int(line_data[0]), float(line_data[2]), float(line_data[3]), float(line_data[4])])
-            elif line_data[1] == 'TYPE_MAGNETIC_FIELD':
-                magn.append([int(line_data[0]), float(line_data[2]), float(line_data[3]), float(line_data[4])])
-            elif line_data[1] == 'TYPE_ROTATION_VECTOR':
-                ahrs.append([int(line_data[0]), float(line_data[2]), float(line_data[3]), float(line_data[4])])
-            elif line_data[1] == 'TYPE_WIFI':
-                sys_ts = line_data[0]
-                bssid = line_data[3]
-                rssi = line_data[4]
-                wifi_data = [sys_ts, bssid, rssi]
-                wifi.append(wifi_data)
-            elif line_data[1] == 'TYPE_BEACON':
-                ts = line_data[0]
-                uuid = line_data[2]
-                major = line_data[3]
-                minor = line_data[4]
-                rssi = line_data[6]
-                ibeacon_data = [ts, '_'.join([uuid, major, minor]), rssi]
-                ibeacon.append(ibeacon_data)
-            elif line_data[1] == 'TYPE_WAYPOINT':
-                waypoint.append([int(line_data[0]), float(line_data[2]), float(line_data[3])])
+            if data_type == 'TYPE_ACCELEROMETER':
+                acce.append([timestamp, float(line_data[2]), float(line_data[3]), float(line_data[4])])
+            elif data_type == 'TYPE_MAGNETIC_FIELD':
+                magn.append([timestamp, float(line_data[2]), float(line_data[3]), float(line_data[4])])
+            elif data_type == 'TYPE_ROTATION_VECTOR':
+                ahrs.append([timestamp, float(line_data[2]), float(line_data[3]), float(line_data[4])])
+            elif data_type == 'TYPE_WIFI':
+                wifi.append([timestamp, line_data[3], int(line_data[4])])
+            elif data_type == 'TYPE_BEACON':
+                ibeacon.append([timestamp, '_'.join(line_data[2:5]), int(line_data[6])])
+            elif data_type == 'TYPE_WAYPOINT':
+                waypoint.append([timestamp, float(line_data[2]), float(line_data[3])])
 
-    acce, magn, ahrs, wifi, ibeacon, waypoint = np.array(acce), np.array(magn), np.array(ahrs), np.array(wifi), np.array(ibeacon), np.array(waypoint)
+    acce = np.array(acce)
+    magn = np.array(magn)
+    waypoint = np.array(waypoint)
 
-    augmented_data = waypoint  # No augmentation
+    index2data = [{'magn': [], 'wifi': defaultdict(list), 'ibeacon': defaultdict(list)} for _ in waypoint]
+    index2time = waypoint[:, 0]
 
-    index2data = [{'magn': [], 'wifi': defaultdict(list), 'ibeacon': defaultdict(list)} for _ in range(len(augmented_data))]
-    index2time = augmented_data[:, 0]
-    for magn_data in magn: 
-        tdiff = abs(index2time - magn_data[0])
-        i = np.argmin(tdiff)
-        index2data[i]['magn'].append((magn_data[1], magn_data[2], magn_data[3]))
+    for magn_data in magn:
+        tdiff = np.abs(index2time - magn_data[0])
+        idx = np.argmin(tdiff)
+        index2data[idx]['magn'].append(magn_data[1:])
+
     for wifi_data in wifi:
-        tdiff = abs(index2time - int(wifi_data[0]))
-        i = np.argmin(tdiff)
-        index2data[i]['wifi'][wifi_data[1]].append(int(wifi_data[2]))
+        tdiff = np.abs(index2time - wifi_data[0])
+        idx = np.argmin(tdiff)
+        index2data[idx]['wifi'][wifi_data[1]].append(wifi_data[2])
+
     for ibeacon_data in ibeacon:
-        tdiff = abs(index2time - int(ibeacon_data[0]))
-        i = np.argmin(tdiff)
-        index2data[i]['ibeacon'][ibeacon_data[1]].append(int(ibeacon_data[2]))
+        tdiff = np.abs(index2time - ibeacon_data[0])
+        idx = np.argmin(tdiff)
+        index2data[idx]['ibeacon'][ibeacon_data[1]].append(ibeacon_data[2])
 
-    txt_data = [None] * len(augmented_data)
-    for index in range(len(index2time)):
-        t, Px, Py = augmented_data[index]
-        txt_data[index] = [t, Px, Py]
-        magns, wifis, ibeacons = np.array(index2data[index]['magn']), index2data[index]['wifi'], index2data[index]['ibeacon']
-        if len(magns) > 0:
-            magn_mean = magns.mean(axis=0)
-            magn_mean_intense = np.mean(np.sqrt(np.sum(magns**2, axis=1)))
-            txt_data[index].extend(list(magn_mean) + [float(magn_mean_intense)])
+    txt_data = []
+    for idx, (t, px, py) in enumerate(waypoint):
+        magn_values = index2data[idx]['magn']
+        if magn_values:
+            magn_mean = np.mean(magn_values, axis=0)
+            magn_intensity = np.mean(np.linalg.norm(magn_values, axis=1))
         else:
-            txt_data[index].extend([0, 0, 0, 0])
+            magn_mean = [0, 0, 0]
+            magn_intensity = 0
 
-        txt_data[index].append(defaultdict(lambda: -100))
-        for bssid, rssis in wifis.items():
-            txt_data[index][-1][bssid] = sum(rssis) / len(rssis)
+        wifi_signals = defaultdict(lambda: -100)
+        for bssid, rssis in index2data[idx]['wifi'].items():
+            wifi_signals[bssid] = np.mean(rssis)
 
-        txt_data[index].append(defaultdict(lambda: -100))
-        for uuid, rssis in ibeacons.items():
-            txt_data[index][-1][uuid] = sum(rssis) / len(rssis)
+        ibeacon_signals = defaultdict(lambda: -100)
+        for uuid, rssis in index2data[idx]['ibeacon'].items():
+            ibeacon_signals[uuid] = np.mean(rssis)
+
+        txt_data.append([t, px, py] + list(magn_mean) + [magn_intensity, wifi_signals, ibeacon_signals])
 
     return txt_data
 
 
-def split_floor_data(site, floor, testratio=0.1): 
+def split_floor_data(site, floor, testratio=0.1):
     file_path = os.path.join('./data', site, floor)
-    file_list = os.listdir(os.path.join(file_path, "path_data_files"))
+    txt_files = os.listdir(os.path.join(file_path, "path_data_files"))
+    trajectory_data = []
 
-    total_posMagn_data = np.zeros((0, 6)).astype('float')
-    total_wifi_data = np.zeros((0, 0)).astype('float')
-    total_ibeacon_data = np.zeros((0, 0)).astype('float')
-    wifi_ibeacon_detected = np.zeros((0, 2)).astype('float')
-    index2bssid = []
-    bssid2index = dict()
-    index2uuid = []
-    uuid2index = dict()
-    no_wifi_ibeacon = [0, 0]
-    not_in_train_wifi_ibeacon = [0, 0]
+    for txt_file in txt_files:
+        txt_path = os.path.join(file_path, "path_data_files", txt_file)
+        trajectory_data.extend(get_data_from_one_txt(txt_path))
 
-    trajectory_data = np.zeros((0, 9))
-    curfilenum = 0
-    for filename in file_list:
-        curfilenum += 1
-        txtname = os.path.join(file_path, "path_data_files", filename)
-        trajectory_data = np.append(trajectory_data, np.array(get_data_from_one_txt(txtname)), axis=0)
+    trajectory_data = np.array(trajectory_data)
+    total_samples = len(trajectory_data)
+    indices = list(range(total_samples))
+    random.shuffle(indices)
+    split_point = int(total_samples * (1 - testratio))
+    train_indices = indices[:split_point]
+    test_indices = indices[split_point:]
 
-    total_posMagn_data = trajectory_data[:, 1:7].astype('float')
-    data_number = total_posMagn_data.shape[0]
-    test_number = int(testratio * data_number)
-    train_number = data_number - test_number
-    test_indices = random.sample(range(data_number), test_number)
-    train_indices = list(set(range(data_number)).difference(test_indices))    
-    finish_number = 0
+    bssid2index, uuid2index = {}, {}
+    train_data, test_data = [], []
 
-    # add train data the total data
-    for index in train_indices:
-        # add one instance to total_data
-        finish_number += 1 
-        if finish_number % 500 == 0:
-            print(f'data processing ... {finish_number}/{data_number}')
-        tdata = trajectory_data[index]
-        wifi_ibeacon_detected = np.concatenate((wifi_ibeacon_detected, np.zeros((1, 2))), axis=0)
-        total_wifi_data = np.concatenate((total_wifi_data, np.zeros((1,total_wifi_data.shape[1]))), axis=0)
-        total_ibeacon_data = np.concatenate((total_ibeacon_data, np.zeros((1,total_ibeacon_data.shape[1]))), axis=0)
+    def process_data(indices, is_train=True):
+        data_list = []
+        for idx in indices:
+            sample = trajectory_data[idx]
+            px, py = sample[1:3]
+            magn_features = sample[3:7]
+            wifi_signals = sample[7]
+            ibeacon_signals = sample[8]
 
-        wifidic = tdata[7]
-        if wifidic:
-            wifi_ibeacon_detected[-1][0] = 1
-        else: 
-            no_wifi_ibeacon[0] += 1 
-        for bssid, rssi in wifidic.items():
-            if bssid not in bssid2index: 
-                bssid2index[bssid] = len(index2bssid)
-                index2bssid.append(bssid)
-                total_wifi_data = np.concatenate((total_wifi_data, np.zeros((total_wifi_data.shape[0], 1))), axis=1)
-            total_wifi_data[-1][bssid2index[bssid]] = (100 + rssi) / 100
-
-        ibeacondic = tdata[8]
-        if ibeacondic:
-            wifi_ibeacon_detected[-1][1] = 1
-        else: 
-            no_wifi_ibeacon[1] += 1 
-        for uuid, rssi in ibeacondic.items():
-            if uuid not in uuid2index: 
-                uuid2index[uuid] = len(index2uuid)
-                index2uuid.append(uuid)
-                total_ibeacon_data = np.concatenate((total_ibeacon_data, np.zeros((total_ibeacon_data.shape[0], 1))), axis=1) # new feature
-            total_ibeacon_data[-1][uuid2index[uuid]] = (100 + rssi) / 100
-
-    # add test data the total data
-    for index in test_indices:
-        # add one instance to total_data
-        finish_number += 1 
-        if finish_number % 500 == 0:
-            print(f'data processing ... {finish_number}/{data_number}')
-        tdata = trajectory_data[index]
-        wifi_ibeacon_detected = np.concatenate((wifi_ibeacon_detected, np.zeros((1, 2))), axis=0)
-        total_wifi_data = np.concatenate((total_wifi_data, np.zeros((1,total_wifi_data.shape[1]))), axis=0)
-        total_ibeacon_data = np.concatenate((total_ibeacon_data, np.zeros((1,total_ibeacon_data.shape[1]))), axis=0)
-
-        wifidic = tdata[7]
-        if wifidic:
-            wifi_ibeacon_detected[-1][0] = 1
-        else: 
-            no_wifi_ibeacon[0] += 1 
-        for bssid, rssi in wifidic.items():
-            if bssid in bssid2index: # For test data, we only caputure the bssid which appeared in the train data before.
-                total_wifi_data[-1][bssid2index[bssid]] = (100 + rssi) / 100
+            wifi_vector = []
+            if wifi_signals:
+                for bssid in wifi_signals.keys():
+                    if is_train and bssid not in bssid2index:
+                        bssid2index[bssid] = len(bssid2index)
+                    if bssid in bssid2index:
+                        wifi_vector.append((bssid2index[bssid], (100 + wifi_signals[bssid]) / 100))
             else:
-                not_in_train_wifi_ibeacon[0] += 1
+                wifi_vector.append((-1, 0))
 
-
-        ibeacondic = tdata[8]
-        if ibeacondic:
-            wifi_ibeacon_detected[-1][1] = 1
-        else:
-            no_wifi_ibeacon[1] += 1
-        for uuid, rssi in ibeacondic.items():
-            if uuid in uuid2index: # For test data, we only caputure the bssid which appeared in the train data before.
-                total_ibeacon_data[-1][uuid2index[uuid]] = (100 + rssi) / 100
+            ibeacon_vector = []
+            if ibeacon_signals:
+                for uuid in ibeacon_signals.keys():
+                    if is_train and uuid not in uuid2index:
+                        uuid2index[uuid] = len(uuid2index)
+                    if uuid in uuid2index:
+                        ibeacon_vector.append((uuid2index[uuid], (100 + ibeacon_signals[uuid]) / 100))
             else:
-                not_in_train_wifi_ibeacon[1] += 1
+                ibeacon_vector.append((-1, 0))
 
+            data_list.append((px, py, *magn_features, wifi_vector, ibeacon_vector))
+        return data_list
 
-    train_set = np.concatenate((total_posMagn_data[train_indices, :], wifi_ibeacon_detected[:train_number, :], \
-                                total_wifi_data[:train_number, :], total_ibeacon_data[:train_number, :]), axis=1)
-    test_set = np.concatenate((total_posMagn_data[test_indices, :], wifi_ibeacon_detected[train_number:, :], \
-                                total_wifi_data[train_number:, :], total_ibeacon_data[train_number:, :]), axis=1)
+    train_data = process_data(train_indices, is_train=True)
+    test_data = process_data(test_indices, is_train=False)
 
-    print(f'Total data instance: {data_number}, train number: {train_number}, test number: {test_number}')
-    print()    
-    print(f'There are {no_wifi_ibeacon[0]} steps that did not find wifi, and {no_wifi_ibeacon[1]} steps that did not find ibeacon.')
-    print(f'There are {not_in_train_wifi_ibeacon[0]} bssids and {not_in_train_wifi_ibeacon[1]} uuids which were detected in testset while not detected in trainset, so that they were discard.')
-    print(f'Final wifi bssid number: {len(index2bssid)}, ibeacon uuid number: {len(index2uuid)}')
+    # Convert data lists to numpy arrays
+    def convert_to_numpy(data_list, bssid2index_len, uuid2index_len):
+        data_array = []
+        for item in data_list:
+            px, py, *features, wifi_vector, ibeacon_vector = item
+            wifi_features = np.zeros(bssid2index_len)
+            for idx, value in wifi_vector:
+                if idx >= 0:
+                    wifi_features[idx] = value
+            ibeacon_features = np.zeros(uuid2index_len)
+            for idx, value in ibeacon_vector:
+                if idx >= 0:
+                    ibeacon_features[idx] = value
+            data_array.append([px, py] + features + wifi_features.tolist() + ibeacon_features.tolist())
+        return np.array(data_array)
 
-    return train_set, test_set, [bssid2index, uuid2index]
+    train_set = convert_to_numpy(train_data, len(bssid2index), len(uuid2index))
+    test_set = convert_to_numpy(test_data, len(bssid2index), len(uuid2index))
 
-
-
-
-
-
+    return train_set, test_set, (bssid2index, uuid2index)
