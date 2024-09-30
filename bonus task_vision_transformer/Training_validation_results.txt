@@ -1,0 +1,90 @@
+Training Results - Epoch: 1 Avg loss: 13.94
+Validation Results - Epoch: 1 Avg loss: 23.52
+Learning rate: 0.001000
+Training Results - Epoch: 2 Avg loss: 11.19
+Validation Results - Epoch: 2 Avg loss: 17.50
+Learning rate: 0.001000
+Training Results - Epoch: 3 Avg loss: 12.11
+Validation Results - Epoch: 3 Avg loss: 19.03
+Learning rate: 0.001000
+Training Results - Epoch: 4 Avg loss: 17.82
+Validation Results - Epoch: 4 Avg loss: 21.94
+Learning rate: 0.001000
+Training Results - Epoch: 5 Avg loss: 13.72
+Validation Results - Epoch: 5 Avg loss: 15.66
+Learning rate: 0.001000
+Training Results - Epoch: 6 Avg loss: 13.74
+Validation Results - Epoch: 6 Avg loss: 15.64
+Learning rate: 0.001000
+Training Results - Epoch: 7 Avg loss: 18.21
+Validation Results - Epoch: 7 Avg loss: 13.51
+Learning rate: 0.001000
+Training Results - Epoch: 8 Avg loss: 7.84
+Validation Results - Epoch: 8 Avg loss: 15.00
+Learning rate: 0.001000
+Training Results - Epoch: 9 Avg loss: 13.85
+Validation Results - Epoch: 9 Avg loss: 15.35
+Learning rate: 0.001000
+Training Results - Epoch: 10 Avg loss: 15.45
+Validation Results - Epoch: 10 Avg loss: 11.95
+Learning rate: 0.001000
+Training Results - Epoch: 11 Avg loss: 9.04
+Validation Results - Epoch: 11 Avg loss: 20.34
+Learning rate: 0.001000
+Training Results - Epoch: 12 Avg loss: 10.79
+Validation Results - Epoch: 12 Avg loss: 11.03
+Learning rate: 0.001000
+Training Results - Epoch: 13 Avg loss: 11.25
+Validation Results - Epoch: 13 Avg loss: 11.06
+Learning rate: 0.001000
+Training Results - Epoch: 14 Avg loss: 9.67
+Validation Results - Epoch: 14 Avg loss: 19.87
+Learning rate: 0.001000
+Training Results - Epoch: 15 Avg loss: 10.23
+Validation Results - Epoch: 15 Avg loss: 13.00
+Learning rate: 0.001000
+Training Results - Epoch: 16 Avg loss: 9.44
+Validation Results - Epoch: 16 Avg loss: 14.53
+Learning rate: 0.001000
+Training Results - Epoch: 17 Avg loss: 9.85
+Validation Results - Epoch: 17 Avg loss: 12.47
+Learning rate: 0.000100
+Training Results - Epoch: 18 Avg loss: 5.90
+Validation Results - Epoch: 18 Avg loss: 12.41
+Learning rate: 0.000100
+Training Results - Epoch: 19 Avg loss: 6.89
+Validation Results - Epoch: 19 Avg loss: 12.77
+Learning rate: 0.000100
+Training Results - Epoch: 20 Avg loss: 7.62
+Validation Results - Epoch: 20 Avg loss: 12.79
+Learning rate: 0.000100
+Training Results - Epoch: 21 Avg loss: 8.40
+Validation Results - Epoch: 21 Avg loss: 12.48
+Learning rate: 0.000010
+Training Results - Epoch: 22 Avg loss: 5.20
+Validation Results - Epoch: 22 Avg loss: 11.97
+Learning rate: 0.000010
+Training Results - Epoch: 23 Avg loss: 8.44
+Validation Results - Epoch: 23 Avg loss: 12.41
+Learning rate: 0.000010
+Training Results - Epoch: 24 Avg loss: 5.61
+Validation Results - Epoch: 24 Avg loss: 12.58
+Learning rate: 0.000010
+Training Results - Epoch: 25 Avg loss: 4.04
+Validation Results - Epoch: 25 Avg loss: 12.37
+Learning rate: 0.000001
+Training Results - Epoch: 26 Avg loss: 5.08
+Validation Results - Epoch: 26 Avg loss: 12.34
+Learning rate: 0.000001
+Training Results - Epoch: 27 Avg loss: 9.87
+Validation Results - Epoch: 27 Avg loss: 12.32
+Learning rate: 0.000001
+Training Results - Epoch: 28 Avg loss: 6.27
+Validation Results - Epoch: 28 Avg loss: 12.58
+Learning rate: 0.000001
+Training Results - Epoch: 29 Avg loss: 6.22
+Validation Results - Epoch: 29 Avg loss: 12.46
+Learning rate: 0.000000
+Training Results - Epoch: 30 Avg loss: 4.01
+Validation Results - Epoch: 30 Avg loss: 12.40
+Learning rate: 0.000000
