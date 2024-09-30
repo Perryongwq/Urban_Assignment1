@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 import json
 import numpy as np
 from sklearn.preprocessing import StandardScaler
-from mode1_data import split_floor_data  # Ensure you have this module or replace it with your data loading logic
+from mode1_data import split_floor_data  
 
 # Function to get the site floors
 def get_site_floors(data_dir: str) -> list:
@@ -56,11 +56,11 @@ class VAE(nn.Module):
         )
         # Regressor for location prediction
         self.regressor = nn.Sequential(
-            nn.Linear(latent_dim, 128),  # Increased number of neurons
+            nn.Linear(latent_dim, 128),  
             nn.ReLU(),
-            nn.Linear(128, 64),          # Added extra layer
+            nn.Linear(128, 64),         
             nn.ReLU(),
-            nn.Linear(64, 2)             # Output x and y coordinates
+            nn.Linear(64, 2)            
         )
 
     def encode(self, x):
@@ -295,7 +295,7 @@ class VAEModel:
 # Main execution code
 if __name__ == "__main__":
     test_one = True
-    batch_size = 32
+    batch_size = 64
 
     if test_one:
         model = VAEModel('site1', 'F1', batchsize=batch_size, device='cuda', testratio=0.2, use_wifi=True, use_ibeacon=False)
@@ -304,7 +304,7 @@ if __name__ == "__main__":
         # Adjusting KL divergence weight and loss weights
         min_val_error, stop_epoch = model.train(
             epochs=300,
-            startlr=0.0005,
+            startlr=0.0001,
             beta=0.1,
             lambda_vae=0.1,
             lambda_reg=1.0,
@@ -329,5 +329,4 @@ if __name__ == "__main__":
             groundtruth=ground_truth_location
         )
     else:
-        # Code for training multiple models
         pass

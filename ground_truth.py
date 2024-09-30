@@ -1,5 +1,4 @@
 import os
-
 # Function to process each file and extract magnetic data, WiFi signals, iBeacon signals, and ground truth location
 def extract_data_from_file(file_path):
     magnetic_data = []
@@ -30,15 +29,6 @@ def extract_data_from_file(file_path):
                     print(f"Skipping invalid iBeacon line: {line.strip()}")
 
     return magnetic_data, wifi_signals, ibeacon_signals, ground_truth_location
-
-# sample_txt_file_path = 'C:/Users/perry/Documents/AI6128/Urban_Assignment1/data/site1/F1/path_data_files/5dd9e7aac5b77e0006b1732b.txt'
-# sample_data = extract_data_from_file(sample_txt_file_path)
-# print("Magnetic Data:", sample_data[0])
-# print("WiFi Signals:", sample_data[1])
-# print("iBeacon Signals:", sample_data[2])
-# print("Ground Truth Location:", sample_data[3])
-
-
 
 def process_all_files(directory):
     all_data = []

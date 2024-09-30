@@ -337,7 +337,7 @@ class DLModel:
 # Main execution code
 if __name__ == "__main__":
     test_one = True
-    batch_size = 32
+    batch_size = 64
 
     if not test_one:
         use_wifi = True
@@ -356,7 +356,7 @@ if __name__ == "__main__":
 
     # Training phase
     if test_one:
-        min_val_error, stop_epoch = model.train(epochs=300, startlr=0.0005)
+        min_val_error, stop_epoch = model.train(epochs=300, startlr=0.0001)
         print(f"Minimum validation error: {min_val_error}, stop_epoch: {stop_epoch}")
     else:
         print(f'=> Training models for BS: {batch_size}, use_wifi: {use_wifi}, use_ibeacon: {use_ibeacon}')
