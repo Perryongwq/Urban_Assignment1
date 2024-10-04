@@ -6,3 +6,6 @@ data.zip
 data_old.py
 main_old.py
 resources
+bonus task_vision_transformer/image_data/
+bonus task_vision_transformer/all_sensor_data.csv
+bonus task_vision_transformer/wifi_data.csv
